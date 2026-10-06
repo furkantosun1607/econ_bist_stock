@@ -344,13 +344,18 @@ ta                # Teknik analiz indikatörleri (opsiyonel, elle de yazabiliriz
 
 ---
 
-## ❓ Karar Noktaları (Sana Bırakılan)
+## 🎯 Kararlaştırılan Parametreler ve Strateji Tasarımı
 
-1. **Strateji Seçimi:** Dersten biri mi, kendi tasarımın mı, yoksa hybrid mi?
-2. **Risk Parametreleri:** Stop-loss %, trailing stop multiplier vs.
-3. **İndikatör Parametreleri:** SMA period, RSI period vs.
-4. **Position Sizing:** Full capital mi, kısmi mi?
-5. **Commission:** Hesaba katılacak mı?
+1. **Strateji Seçimi:** **Maksimum Getiri Odaklı Özel/Hibrit Strateji**  
+   - Dersteki stratejilerle sınırlı değil; 6 hissenin tamamında kendi benchmark hedefini bireysel olarak aşacak (6/6 PASS) ve en yüksek toplam net kârı üretecek kendi algoritmamız tasarlanacak.
+2. **Risk Parametreleri:** **Bizim Belirleyeceğimiz Dinamik/Optimize Parametreler**  
+   - Hisselerin oynaklığına (ATR) duyarlı trailing stop ve akıllı çıkış kuralları kullanılacak; ASELS/TUPRS gibi mega trendlerde erken çıkış önlenecek, yatay hisselerde sermaye korunacak.
+3. **İndikatör Parametreleri:** **Veri Odaklı Optimize Edilecek**  
+   - Trend gücü (ADX/EMA), momentum (RSI) ve hacim teyit parametreleri getiri maksimizasyonuna göre ayarlanacak.
+4. **Position Sizing:** **Full Capital (%100)**  
+   - Her işlemde mevcut sermayenin tamamı kullanılacak (bileşik getiri / compounding).
+5. **Commission & Slippage:** **Hesaba Katılmayacak (%0.0)**  
+   - Komisyonsuz ve sıfır kayma payı ile simülasyon yürütülecek.
 
 ---
 
