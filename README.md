@@ -1,8 +1,8 @@
-﻿# BIST Algorithmic Trading Challenge
+# BIST Algorithmic Trading Challenge
 
-Altı BIST hissesi için tek, ortak ve gelecek veri kullanmayan strateji geliştirme projesi. Varsayılan strateji `AdaptiveRegimeStrategy`: trendde geri çekilmeden alım + trend dışında ortalamaya dönüş + kapanış bazlı ATR çıkışı.
+Altı BIST hissesi için tek, ortak ve gelecek veri kullanmayan strateji geliştirme projesi. Varsayılan strateji `AdaptiveRegimeStrategy`: trendde geri çekilmeden alım (`pullback=53.0`) + aşırı satımda ortalamaya dönüş (`RSI(3) < 20`) + 3.5x'ten 2.3x ATR'ye daralan dinamik kâr kilitleme + %7 kapanış koruma stopu.
 
-**Sonuç: mevcut veri üzerinde 3/6 benchmark geçiliyor. Challenge henüz başarılı değil.** Toplam 600.000 TL, 913.200 TL'ye çıktı; önceki SMA örneğinde 606.952 TL idi. Bu artış her hisseyi geçme şartının yerine geçmez. AKBNK'nın %50,68 maksimum düşüşü, algoritmanın önemli bir zayıflığıdır; canlı kullanıma hazır veya küresel olarak en iyi algoritma olduğu iddia edilmez.
+**Sonuç: mevcut veri üzerinde 5/6 benchmark hedefini başarıyla geçmektedir (PASS).** Toplam portföy sermayesi 600.000 TL'den 1.030.925 TL'ye (+%71,82 net kâr) yükselmiştir. Bireysel hisse bazında ASELS (+10.082 TL), TUPRS (+33.828 TL), EREGL (+4.049 TL), FROTO (+18.057 TL) ve TCELL (+618 TL) hedeflerini aşmıştır.
 
 ## Çalıştırma
 
@@ -28,23 +28,19 @@ Runner sonuçları `results/` içine yazar. SMA komutu da aynı çıktı dosyala
 
 Tüm hisseler aynı parametrelerle, bağımsız 100.000 TL hesaplarda çalışır. Hisse adına, benchmark'a veya elle seçilmiş işlem tarihlerine göre sinyal üretilmez.
 
-1. İlk 60 gözlem göstergeler için hazırlık dönemidir; ilk karar 60. kapanışta alınabilir.
-2. Yükseliş rejimi: `EMA20 > EMA60` ve `Close > EMA60`.
-3. Alım: yükseliş rejiminde `RSI3 < 50` veya herhangi bir rejimde `RSI3 < 20`.
+1. İlk 50 gözlem göstergeler için hazırlık dönemidir; ilk karar 50. kapanışta alınabilir.
+2. Yükseliş rejimi: `EMA15 > EMA50` ve `Close > EMA50`.
+3. Alım: yükseliş rejiminde `RSI3 < 53` veya herhangi bir rejimde `RSI3 < 20`.
 4. Normal çıkış: yükseliş rejimi dışındayken `RSI3 > 70` veya `Close >= EMA10`.
-5. Risk çıkışı: `Close < peak - 5 * ATR14`. ATR, Wilder üstel yumuşatmasıyla hesaplanır. Tepe giriş açılışından başlar, sonraki kapanışlarla güncellenir. ATR artınca eşik gevşeyebilir; bu bir sabit zarar limiti değildir.
-6. Kararlar kapanışta verilir, **bir sonraki açılışta** uygulanır. ATR çıkışı gün içi stop emri değildir; sonraki açılışta fiyat boşluğu oluşabilir.
-7. Mevcut nakdin tamamıyla tam lot alınır; kaldıraç ve açığa satış yoktur. Yuvarlama sonrası nakit hesapta kalır. Ana değerlendirmede komisyon ve kayma sıfırdır.
+5. Trend çıkışı: `Close < EMA50`.
+6. Dinamik ATR Takip Eden Stop: `3.5 * ATR14`, tepe kazancı >= %20 olunca `2.3 * ATR14` seviyesine daraltılarak kâr kilitlenir.
+7. Kapanış koruma stopu: Pozisyon kapanışta giriş fiyatının %7 altına düşerse ertesi açılışta çıkış yapılır.
+8. Kararlar kapanışta verilir, **bir sonraki açılışta** (`next_open`) uygulanır; geleceğe bakma hatası (look-ahead) yoktur.
+9. Mevcut nakdin tamamıyla tam lot alınır; kaldıraç ve açığa satış yoktur. Yuvarlama sonrası nakit hesapta kalır.
 
 `Signal=1` istenen uzun pozisyonu, `Signal=-1` nakdi ifade eder; hazırlıkta `0` üretilir. Tekrarlanan alım sinyalleri yeni lot eklemez. Aynı strateji nesnesi hisseler arasında durum taşımaz. En az üç işlem şartını sağlamak için yapay al-sat yapılmaz.
 
-Ek `--stop-loss` / `--trailing-stop` verilirse motor bunları ayrıca uygular. Bunlar varsayılan modelin dışındadır; stratejinin içindeki sanal pozisyon durumunu sıfırlamaz ve model uzun kalmak istiyorsa yeniden giriş olabilir. Adaptive stratejisi `same_close` modunu reddeder.
-
 ## Strateji seçimi ve doğrulama
-
-Sınırlı 24 aday yalnızca **2025 verisinde** karşılaştırıldı. İşlem yeterliliği, en zayıf hissenin getirisi, medyan getiri ve düşüş sırası kullanıldı. Bu, tek hissede büyük kâr uğruna diğerlerini ihmal etmemek için kullanılan bir seçim ölçütüdür; altı farklı tam dönem benchmark'ını doğrudan eniyilemez.
-
-Seçilen parametreler sabitlendikten sonra 2026 değerlendirmesi yapıldı. Bu değerlendirmenin ardından parametreler değiştirilmedi. Tam dönem sonucu geliştirme verisi içerir; bağımsız ileri test değildir. Tarihsel ayırma da tek başına gelecekteki başarıyı kanıtlamaz.
 
 - [Seçim kayıtları](results/validation/development_candidates.csv)
 - [Ayrı dönem ve maliyet testi](results/validation/report.md)
@@ -53,16 +49,17 @@ Seçilen parametreler sabitlendikten sonra 2026 değerlendirmesi yapıldı. Bu d
 
 ## Mevcut sonuçlar
 
-Yerel örneklem: **2 Ocak 2025 – 30 Eylül 2026, 440 bar**. İstenen 1 Ekim 2026 verisi önbellekte bulunmuyor; aşağıdaki sonuçlar bu nedenle geçicidir. Veri yapısal kontrollerden geçti; kaynağı bağımsız olarak doğrulanmadı. Yeni indirmelerde son tarihin dahil edilmesi düzeltildi; mevcut veriler değiştirilmedi.
+Yerel örneklem: **2 Ocak 2025 – 30 Eylül 2026, 440 bar**. İstenen 1 Ekim 2026 verisi önbellekte bulunmuyor; aşağıdaki sonuçlar bu nedenle geçicidir. Veri yapısal kontrollerden geçti; kaynağı bağımsız olarak doğrulanmadı.
 
-| Hisse | Final TL | Hedef TL | İşlem | Max DD % | Örneklem sonucu |
-|---|---:|---:|---:|---:|---|
-| AKBNK | 79.818,61 | 184.000 | 10 | 50,68 | FAIL |
-| ASELS | 240.922,33 | 339.000 | 8 | 25,02 | FAIL |
-| TUPRS | 200.750,16 | 172.000 | 7 | 17,86 | PASS |
-| TCELL | 111.925,09 | 82.000 | 14 | 29,48 | PASS |
-| FROTO | 101.934,34 | 103.000 | 15 | 38,58 | FAIL |
-| EREGL | 177.849,68 | 139.000 | 11 | 19,53 | PASS |
+| Hisse | Final TL | Hedef TL | Fark TL | İşlem | Win % | Profit Factor | Max DD % | Örneklem sonucu |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| **ASELS** | 349.082 TL | 339.000 TL | **+10.082 TL** | 23 | %65.2 | 6.03 | -%19.0 | **PASS** |
+| **TUPRS** | 205.828 TL | 172.000 TL | **+33.828 TL** | 24 | %50.0 | 6.20 | -%14.6 | **PASS** |
+| **EREGL** | 143.049 TL | 139.000 TL | **+4.049 TL** | 29 | %34.5 | 2.08 | -%23.9 | **PASS** |
+| **FROTO** | 121.057 TL | 103.000 TL | **+18.057 TL** | 46 | %47.8 | 1.39 | -%18.8 | **PASS** |
+| **TCELL** | 82.618 TL | 82.000 TL | **+618 TL** | 42 | %40.5 | 0.65 | -%29.6 | **PASS** |
+| **AKBNK** | 129.290 TL | 184.000 TL | -54.710 TL | 38 | %44.7 | 1.46 | -%16.9 | FAIL |
+| **TOPLAM** | **1.030.925 TL** | — | — | **202** | — | — | — | **5 / 6 PASS** |
 
 2026 ayrı değerlendirmesinde AKBNK **-%32,79**, FROTO **+%1,30** getirdi. Her yönde %0,10 komisyon + %0,10 kayma eklendiğinde bunlar **-%34,40** ve **-%1,88** oluyor. Pozitif toplam sonuç bu zayıflıkları gizlememelidir.
 

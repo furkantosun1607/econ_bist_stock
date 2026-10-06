@@ -138,8 +138,8 @@ def plot_stock_dashboard(
     fig, (ax_price, ax_equity, ax_trades) = plt.subplots(
         nrows=3,
         ncols=1,
-        figsize=(14, 11),
-        gridspec_kw={"height_ratios": [3.0, 1.4, 1.2], "hspace": 0.28},
+        figsize=(16, 12),
+        gridspec_kw={"height_ratios": [3.0, 1.3, 1.4], "hspace": 0.32},
     )
     fig.patch.set_facecolor(STYLE["bg_color"])
 
@@ -148,6 +148,12 @@ def plot_stock_dashboard(
     # ----------------------------------------------------
     _apply_plot_style(ax_price)
     dates = df.index
+
+    # Y-ekseni baslik ve metrik kutusu icin tepe boslugu (headroom)
+    p_min = df["Close"].min()
+    p_max = df["Close"].max()
+    p_range = max(p_max - p_min, 1.0)
+    ax_price.set_ylim(p_min * 0.92, p_max * 1.25)
 
     # Kapanis fiyati cizgisi
     ax_price.plot(
@@ -225,24 +231,35 @@ def plot_stock_dashboard(
             zorder=3,
         )
 
-        # Cikis noktasinda PnL etiketi
-        sign = "+" if t.pnl >= 0 else ""
-        label_text = f"#{idx+1}: {sign}{t.pnl_pct:.1f}%\n({t.exit_reason})"
-        y_offset = (df["Close"].max() - df["Close"].min()) * 0.03
-        y_pos = t.exit_price + y_offset if t.is_winner else t.exit_price - y_offset
+        # Cikis noktasinda PnL ve Giris/Cikis Fiyati etiketi
+        # Cok sayida islem olan hisselerde gorsel kargasa ve ust uste binmeyi onlemek icin
+        # onemli islemler (%2+ hareket veya ilk/son islem) ayrintili etiketlenir.
+        should_annotate = True
+        if len(trades) > 18:
+            should_annotate = (abs(t.pnl_pct) >= 2.0) or (idx == 0) or (idx == len(trades) - 1)
 
-        ax_price.annotate(
-            label_text,
-            xy=(exit_dt, t.exit_price),
-            xytext=(exit_dt, y_pos),
-            fontsize=7.5,
-            fontweight="bold",
-            color=trade_color,
-            ha="center",
-            bbox=dict(boxstyle="round,pad=0.2", facecolor="#ffffff", edgecolor=trade_color, alpha=0.85, lw=0.8),
-            arrowprops=dict(arrowstyle="->", color=trade_color, lw=0.6),
-            zorder=6,
-        )
+        if should_annotate:
+            sign = "+" if t.pnl >= 0 else ""
+            label_text = f"T{idx+1}: {t.entry_price:.1f}➔{t.exit_price:.1f}\n({sign}{t.pnl_pct:.1f}%)"
+            stagger_factor = 1.0 + (idx % 3) * 0.75
+            y_offset = p_range * 0.035 * stagger_factor
+            if t.is_winner:
+                y_pos = min(t.exit_price + y_offset, p_max * 1.10)
+            else:
+                y_pos = max(t.exit_price - y_offset, p_min * 0.95)
+
+            ax_price.annotate(
+                label_text,
+                xy=(exit_dt, t.exit_price),
+                xytext=(exit_dt, y_pos),
+                fontsize=6.8,
+                fontweight="bold",
+                color=trade_color,
+                ha="center",
+                bbox=dict(boxstyle="round,pad=0.22", facecolor="#ffffff", edgecolor=trade_color, alpha=0.88, lw=0.8),
+                arrowprops=dict(arrowstyle="->", color=trade_color, lw=0.6),
+                zorder=6,
+            )
 
     ax_price.set_ylabel("Fiyat (TL)", fontsize=10, fontweight="semibold", color=STYLE["text_dark"])
     ax_price.legend(loc="upper left", frameon=True, facecolor="#ffffff", edgecolor=STYLE["grid_color"], fontsize=8.5)
@@ -368,27 +385,32 @@ def plot_stock_dashboard(
             offset = 0.4 if height >= 0 else -0.4
             sign = "+" if t.pnl >= 0 else ""
             ax_trades.annotate(
-                f"{sign}{t.pnl_pct:.1f}%\n({sign}{t.pnl:,.0f}TL)",
+                f"{sign}{t.pnl_pct:.1f}%\n({sign}{t.pnl:,.0f} TL)",
                 xy=(bar.get_x() + bar.get_width() / 2, height),
                 xytext=(0, offset * 5),
                 textcoords="offset points",
                 ha="center", va=va,
-                fontsize=7.5,
+                fontsize=6.8,
                 fontweight="semibold",
                 color=STYLE["win_color"] if height >= 0 else STYLE["loss_color"],
             )
 
         ax_trades.set_xticks(trade_indices)
+        rotation_angle = 45 if len(trades) > 18 else 0
+        ha_align = "right" if len(trades) > 18 else "center"
+        tick_font = 6.2 if len(trades) > 30 else 7.2
         ax_trades.set_xticklabels(
-            [f"T{i}\n({trades[i-1].exit_reason})" for i in trade_indices],
-            fontsize=8,
+            [f"T{i}\n{trades[i-1].entry_price:.1f}➔{trades[i-1].exit_price:.1f}\n({trades[i-1].exit_reason})" for i in trade_indices],
+            fontsize=tick_font,
+            rotation=rotation_angle,
+            ha=ha_align,
             color=STYLE["text_dark"],
         )
     else:
         ax_trades.text(0.5, 0.5, "Islem Bulunmuyor", ha="center", va="center", color=STYLE["text_muted"])
 
     ax_trades.set_ylabel("PnL (%)", fontsize=10, fontweight="semibold", color=STYLE["text_dark"])
-    ax_trades.set_xlabel("Islem Sirasi ve Cikis Sebebi", fontsize=10, fontweight="semibold", color=STYLE["text_dark"])
+    ax_trades.set_xlabel("Islem Sirasi, Giris/Cikis Fiyatlari ve Cikis Sebebi", fontsize=10, fontweight="semibold", color=STYLE["text_dark"])
 
     # X ekseni tarih formatlama (Ust 2 panel icin)
     for ax in [ax_price, ax_equity]:

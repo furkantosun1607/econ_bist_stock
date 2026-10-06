@@ -447,6 +447,8 @@ def generate_summary_table(
             "Fark (TL)": m.benchmark_diff_tl,
             "Durum": status_str,
             "Trades": m.total_trades,
+            "Wins": m.winning_trades,
+            "Losses": m.losing_trades,
             "Win Rate (%)": m.win_rate,
             "Profit Factor": m.profit_factor if m.profit_factor != float("inf") else 999.0,
             "Max DD (%)": m.max_drawdown_pct,
