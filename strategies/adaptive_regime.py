@@ -3,7 +3,8 @@
 The defaults incorporate dynamic volatility trailing stops, profit locking,
 and trend breakdown protection. Orders use the next bar's open. The strategy's
 exits are close-based decisions, not intraday guaranteed stop prices. No ticker
-or benchmark enters the signal calculation.
+or benchmark enters the signal calculation. Historical performance must be
+evaluated separately; the implementation does not assert benchmark success.
 """
 from __future__ import annotations
 
@@ -23,9 +24,12 @@ class AdaptiveRegimeStrategy(StrategyBase):
     Exit: outside the uptrend, RSI > overbought or close >= EMA(mean).
     Risk exit: close < trail or close < entry * (1 - stop_loss_pct), where trail
     starts at entry open and tracks highest subsequent close minus ATR * multiplier.
-    When trade gain exceeds profit_threshold, the trail tightens to
-    profit_atr_multiplier to lock in large trend profits (e.g. rallies in ASELS/AKBNK).
-    Trend break exit: close < slow EMA when a trend position loses its uptrend structure.
+    Once peak gain reaches profit_threshold, the ATR multiplier switches to
+    profit_atr_multiplier, including in strong trends. ATR is recalculated at
+    each close; the resulting threshold can move down when volatility expands.
+    Trend break exit: any held position with close < slow EMA exits at next open.
+    stop_loss_pct=0.07 is a close-based trigger, not a 7% maximum realized loss:
+    crossing the threshold or gapping at the next open can produce a larger loss.
 
     ``Signal`` expresses persistent desired exposure: 1 means long and -1
     means cash. The warmup emits 0. Repeated long signals also permit the
@@ -39,14 +43,14 @@ class AdaptiveRegimeStrategy(StrategyBase):
         slow_period: int = 50,
         rsi_period: int = 3,
         oversold: float = 20.0,
-        pullback: float = 50.0,
+        pullback: float = 53.0,
         overbought: float = 70.0,
         mean_period: int = 10,
         atr_period: int = 14,
         atr_multiplier: float = 3.5,
         profit_atr_multiplier: float = 2.3,
         profit_threshold: float = 0.20,
-        stop_loss_pct: float = 0.08,
+        stop_loss_pct: float = 0.07,
         exit_on_slow_break: bool = True,
         cooldown_bars: int = 1,
         warmup_period: int = 50,
@@ -76,8 +80,10 @@ class AdaptiveRegimeStrategy(StrategyBase):
             raise ValueError("thresholds must satisfy 0 < oversold < pullback < overbought < 100")
         if atr_multiplier <= 0 or profit_atr_multiplier <= 0:
             raise ValueError("atr multipliers must be positive")
-        if stop_loss_pct < 0:
-            raise ValueError("stop_loss_pct must be non-negative")
+        if not 0 <= stop_loss_pct < 1:
+            raise ValueError("stop_loss_pct must satisfy 0 <= value < 1")
+        if profit_atr_multiplier > atr_multiplier:
+            raise ValueError("profit_atr_multiplier must not exceed atr_multiplier")
         if profit_threshold <= 0:
             raise ValueError("profit_threshold must be positive")
         if not isinstance(exit_on_slow_break, bool):
@@ -140,8 +146,7 @@ class AdaptiveRegimeStrategy(StrategyBase):
         pending = 0
         peak = 0.0
         entry_price = 0.0
-        entry_is_trend = False
-        bars_since_exit = 999
+        bars_since_exit = self.cooldown_bars
         opens = out.Open.to_numpy()
         closes = out.Close.to_numpy()
         fast = out[f"EMA_{self.fast_period}"].to_numpy()
@@ -156,7 +161,6 @@ class AdaptiveRegimeStrategy(StrategyBase):
                 held = True
                 peak = float(opens[i])
                 entry_price = float(opens[i])
-                entry_is_trend = (regimes[i - 1] == "uptrend") if i > 0 else False
             elif pending == -1:
                 held = False
                 bars_since_exit = 0
@@ -181,13 +185,18 @@ class AdaptiveRegimeStrategy(StrategyBase):
             buy = (buy_trend or buy_os) and (bars_since_exit >= self.cooldown_bars)
 
             recovery_exit = not trend and (rsi[i] > self.overbought or closes[i] >= mean[i])
-            risk_exit = held and (closes[i] < trails[i] or (self.stop_loss_pct > 0 and closes[i] < entry_price * (1 - self.stop_loss_pct)))
+            atr_exit = held and closes[i] < trails[i]
+            stop_loss_exit = (held and self.stop_loss_pct > 0
+                              and closes[i] < entry_price * (1 - self.stop_loss_pct))
+            risk_exit = atr_exit or stop_loss_exit
             trend_exit = held and self.exit_on_slow_break and (closes[i] < slow[i] and not trend)
 
             if held and (recovery_exit or risk_exit or trend_exit):
                 pending = -1
                 signals[i] = -1
-                if risk_exit:
+                if stop_loss_exit:
+                    exit_reasons[i] = "close_stop_loss"
+                elif atr_exit:
                     exit_reasons[i] = "close_atr_stop"
                 elif trend_exit:
                     exit_reasons[i] = "trend_break_exit"

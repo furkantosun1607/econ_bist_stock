@@ -21,7 +21,7 @@ Kullanim:
     from runner import run_pipeline, get_strategy
     from strategies.adaptive_regime import AdaptiveRegimeStrategy
 
-    # Varsayilan Adaptive Regime stratejisi (kapanis bazli 5x ATR trailing exit):
+    # Adaptive: 3.5x ATR, %20 tepe kazancindan sonra 2.3x ATR, %7 kapanis stopu:
     strategy = AdaptiveRegimeStrategy()
     results, challenge_eval, df_summary = run_pipeline(strategy, execution_mode="next_open")
 
@@ -129,7 +129,7 @@ def run_pipeline(
     
     Args:
         strategy: StrategyBase alt sinifi
-        risk_manager: RiskManager nesnesi (None ise risk yonetimi olmadan calisir)
+        risk_manager: Ek RiskManager (None ise stratejinin kendi risk sinyalleri aktif kalir)
         stocks: Test edilecek hisseler (None ise config.STOCKS)
         initial_capital: Hisse basina baslangic sermayesi (TL)
         commission_rate: Komisyon orani
@@ -157,11 +157,18 @@ def run_pipeline(
         print(f"  Hisseler         : {', '.join([get_short_name(s) for s in stocks])}")
         print(f"  Baslangic Sermaye: {initial_capital:,.0f} TL (Hisse basina)")
         print(f"  Emir Modu        : {execution_mode}")
+        print(f"  Parametreler     : {strategy.get_params()}")
+        if isinstance(strategy, AdaptiveRegimeStrategy):
+            print(f"  Strateji Riski   : ATR {strategy.atr_multiplier:g} -> "
+                  f"{strategy.profit_atr_multiplier:g} (tepe kazanci >= "
+                  f"%{strategy.profit_threshold * 100:g}); kapanis stopu "
+                  f"%{strategy.stop_loss_pct * 100:g}; EMA kirilim cikisi "
+                  f"{'acik' if strategy.exit_on_slow_break else 'kapali'}")
         if risk_manager:
             mechanisms = risk_manager.get_active_mechanisms()
             print(f"  Risk Yonetimi    : {', '.join(mechanisms)}")
         else:
-            print("  Risk Yonetimi    : Strateji sinyalleri (Adaptive: kapanis bazli ATR cikisi)")
+            print("  Ek Risk Yonetimi : Yok (stratejinin cikis kurallari kullanilir)")
         print("=" * 70)
 
     # 1. Backtester Motorunu Hazirla
@@ -272,6 +279,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Ek trailing stop (SMA varsayilan %%3; adaptive ATR sinyali kullanir; 0=kapali)",
     )
     parser.add_argument(
+        "--atr-multiplier", type=float, default=None,
+        help="Adaptive temel ATR carpanini degistir (varsayilan 3.5)",
+    )
+    parser.add_argument(
+        "--profit-atr-multiplier", type=float, default=None,
+        help="Adaptive kar kilitleme ATR carpani (varsayilan 2.3)",
+    )
+    parser.add_argument(
+        "--profit-threshold", type=float, default=None,
+        help="Adaptive tepe kazanci esigi (varsayilan 0.20)",
+    )
+    parser.add_argument(
+        "--strategy-stop-loss", type=float, default=None,
+        help="Adaptive kapanis stopu (varsayilan 0.07; 0=kapali). Ek gun ici --stop-loss'tan ayridir.",
+    )
+    parser.add_argument(
+        "--pullback", type=float, default=None,
+        help="Adaptive trend pullback RSI esigi (varsayilan 53.0)",
+    )
+    parser.add_argument(
         "--max-holding-days", type=int, default=None,
         help="Maksimum pozisyon suresi (gun)",
     )
@@ -303,10 +330,22 @@ def main():
         parser.error("adaptive_regime sadece --mode next_open ile calisir.")
 
     # Strateji nesnesini olustur
-    if args.strategy == "sma_crossover":
-        strategy = SmaCrossoverStrategy(fast_period=args.fast, slow_period=args.slow)
-    else:
-        strategy = get_strategy(args.strategy)
+    adaptive_params = {key: value for key, value in {
+        "atr_multiplier": args.atr_multiplier,
+        "profit_atr_multiplier": args.profit_atr_multiplier,
+        "profit_threshold": args.profit_threshold,
+        "stop_loss_pct": args.strategy_stop_loss,
+        "pullback": args.pullback,
+    }.items() if value is not None}
+    if adaptive_params and args.strategy != "adaptive_regime":
+        parser.error("Adaptive ATR/kar/kapanis stopu secenekleri sadece adaptive_regime icindir.")
+    try:
+        if args.strategy == "sma_crossover":
+            strategy = SmaCrossoverStrategy(fast_period=args.fast, slow_period=args.slow)
+        else:
+            strategy = get_strategy(args.strategy, **adaptive_params)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     # Risk yoneticisi olustur
     stop_loss = args.stop_loss
