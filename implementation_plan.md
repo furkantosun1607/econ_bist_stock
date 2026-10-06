@@ -324,7 +324,7 @@ Hiçbir zaman backtester, metrics, visualizer, data_loader değişmez. **Sadece 
 | **Phase 5** | Backtest Motoru | Phase 3, 4 | ✅ Tamamlandı |
 | **Phase 6** | Metrikler | Phase 5 | ✅ Tamamlandı |
 | **Phase 7** | Görselleştirme | Phase 5, 6 | ✅ Tamamlandı |
-| **Phase 8** | Runner + Notebook | Tümü | ⬜ Bekliyor |
+| **Phase 8** | Runner + Notebook | Tümü | ✅ Tamamlandı |
 | **Phase 9** | Analiz Raporu | Phase 8 | ⬜ Bekliyor |
 
 > [!TIP]

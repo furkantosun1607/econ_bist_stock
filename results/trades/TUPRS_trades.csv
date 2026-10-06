@@ -1,0 +1,6 @@
+ticker,entry_date,entry_price,exit_date,exit_price,shares,pnl,pnl_pct,exit_reason,bars_held,commission,cum_capital
+TUPRS.IS,2025-03-18,125.2364,2025-03-19,116.6585,798,-6845.12,-6.85,stop_loss,1,0.0,93154.88
+TUPRS.IS,2025-05-22,117.5165,2025-05-23,115.3994,792,-1676.75,-1.8,trailing_stop,1,0.0,91478.13
+TUPRS.IS,2025-06-16,119.4222,2025-06-17,118.061,766,-1042.68,-1.14,trailing_stop,1,0.0,90435.45
+TUPRS.IS,2026-01-14,196.572,2026-01-15,201.8425,460,2424.45,2.68,trailing_stop,1,0.0,92859.9
+TUPRS.IS,2026-07-13,266.7203,2026-07-24,305.1738,348,13381.79,14.42,trailing_stop,8,0.0,106241.69

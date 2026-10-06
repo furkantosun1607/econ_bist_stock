@@ -1,0 +1,5 @@
+ticker,entry_date,entry_price,exit_date,exit_price,shares,pnl,pnl_pct,exit_reason,bars_held,commission,cum_capital
+EREGL.IS,2025-05-08,22.2444,2025-05-08,21.5771,4495,-2999.66,-3.0,trailing_stop,0,0.0,97000.34
+EREGL.IS,2025-09-25,31.2945,2025-09-26,31.2935,3099,-3.05,-0.0,trailing_stop,1,0.0,96997.28
+EREGL.IS,2026-01-14,24.9014,2026-01-20,25.5899,3895,2681.48,2.76,trailing_stop,4,0.0,99678.76
+EREGL.IS,2026-04-14,31.7681,2026-04-14,30.815,3137,-2989.69,-3.0,trailing_stop,0,0.0,96689.07

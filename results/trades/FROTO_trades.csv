@@ -1,0 +1,4 @@
+ticker,entry_date,entry_price,exit_date,exit_price,shares,pnl,pnl_pct,exit_reason,bars_held,commission,cum_capital
+FROTO.IS,2025-07-07,83.4674,2025-07-14,86.2798,1198,3369.36,3.37,trailing_stop,5,0.0,103369.36
+FROTO.IS,2025-12-10,88.3672,2025-12-17,93.6876,1169,6219.56,6.02,trailing_stop,5,0.0,109588.92
+FROTO.IS,2026-09-15,81.8,2026-09-15,79.346,1339,-3285.91,-3.0,trailing_stop,0,0.0,106303.01
