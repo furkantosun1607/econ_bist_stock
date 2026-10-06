@@ -46,9 +46,10 @@ class TestAdaptiveRegime(unittest.TestCase):
 
     def test_warmup_has_no_exposure(self):
         out = self.strategy.run(self.df)
-        self.assertTrue((out.Signal.iloc[:59] == 0).all())
-        self.assertTrue((out.Target_Position.iloc[:59] == 0).all())
-        self.assertTrue((out.Regime.iloc[:59] == "warmup").all())
+        warmup_end = self.strategy.warmup_period - 1
+        self.assertTrue((out.Signal.iloc[:warmup_end] == 0).all())
+        self.assertTrue((out.Target_Position.iloc[:warmup_end] == 0).all())
+        self.assertTrue((out.Regime.iloc[:warmup_end] == "warmup").all())
 
     def test_monotonic_rsi_and_flat_prices(self):
         rising = self.strategy.run(market(np.arange(100, 200)))
@@ -63,7 +64,8 @@ class TestAdaptiveRegime(unittest.TestCase):
 
     def test_persistent_signal_and_range_recovery(self):
         strategy = AdaptiveRegimeStrategy(fast_period=1, slow_period=2, mean_period=1,
-                                          rsi_period=1, atr_period=1, warmup_period=2)
+                                          rsi_period=1, atr_period=1, warmup_period=2,
+                                          exit_on_slow_break=False)
         df = strategy.prepare_data(market([100, 99, 103, 103]))
         df["EMA_1"] = 104
         df["EMA_2"] = 105
@@ -76,7 +78,8 @@ class TestAdaptiveRegime(unittest.TestCase):
 
     def test_close_stop_executes_at_following_open(self):
         strategy = AdaptiveRegimeStrategy(fast_period=1, slow_period=2, mean_period=1,
-                                          rsi_period=1, atr_period=1, warmup_period=2)
+                                          rsi_period=1, atr_period=1, atr_multiplier=5.0,
+                                          warmup_period=2)
         df = strategy.prepare_data(market([100, 99, 90, 91]))
         df["Open"] = [100, 100, 100, 91]
         df["High"] = 101
@@ -101,7 +104,7 @@ class TestAdaptiveRegime(unittest.TestCase):
         assert_frame_equal(self.strategy.run(self.df), self.strategy.run(renamed))
 
     def test_invalid_parameters(self):
-        for params in ({"fast_period": 0}, {"slow_period": 20}, {"rsi_period": 2.5},
+        for params in ({"fast_period": 0}, {"slow_period": 15}, {"rsi_period": 2.5},
                        {"mean_period": True}, {"atr_multiplier": 0},
                        {"atr_multiplier": np.nan}, {"oversold": 50},
                        {"overbought": 100}, {"warmup_period": 10}):

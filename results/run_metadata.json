@@ -1,16 +1,21 @@
 {
   "strategy": "Adaptive_Regime",
   "params": {
-    "fast_period": 20,
-    "slow_period": 60,
+    "fast_period": 15,
+    "slow_period": 50,
     "rsi_period": 3,
     "mean_period": 10,
     "atr_period": 14,
-    "warmup_period": 60,
+    "warmup_period": 50,
+    "cooldown_bars": 1,
     "oversold": 20.0,
     "pullback": 50.0,
     "overbought": 70.0,
-    "atr_multiplier": 5.0
+    "atr_multiplier": 3.5,
+    "profit_atr_multiplier": 2.3,
+    "profit_threshold": 0.2,
+    "stop_loss_pct": 0.08,
+    "exit_on_slow_break": true
   },
   "execution_mode": "next_open",
   "initial_capital": 100000,
