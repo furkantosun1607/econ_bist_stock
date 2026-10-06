@@ -322,7 +322,7 @@ Hiçbir zaman backtester, metrics, visualizer, data_loader değişmez. **Sadece 
 | **Phase 3** | Strateji Base + Örnek | Phase 2 | ✅ Tamamlandı |
 | **Phase 4** | Risk Manager | - | ✅ Tamamlandı |
 | **Phase 5** | Backtest Motoru | Phase 3, 4 | ✅ Tamamlandı |
-| **Phase 6** | Metrikler | Phase 5 | ⬜ Bekliyor |
+| **Phase 6** | Metrikler | Phase 5 | ✅ Tamamlandı |
 | **Phase 7** | Görselleştirme | Phase 5, 6 | ⬜ Bekliyor |
 | **Phase 8** | Runner + Notebook | Tümü | ⬜ Bekliyor |
 | **Phase 9** | Analiz Raporu | Phase 8 | ⬜ Bekliyor |
