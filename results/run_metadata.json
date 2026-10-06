@@ -1,0 +1,112 @@
+{
+  "strategy": "Adaptive_Regime",
+  "params": {
+    "fast_period": 20,
+    "slow_period": 60,
+    "rsi_period": 3,
+    "mean_period": 10,
+    "atr_period": 14,
+    "warmup_period": 60,
+    "oversold": 20.0,
+    "pullback": 50.0,
+    "overbought": 70.0,
+    "atr_multiplier": 5.0
+  },
+  "execution_mode": "next_open",
+  "initial_capital": 100000,
+  "commission_rate": 0.0,
+  "slippage_rate": 0.0,
+  "risk_manager": null,
+  "data": {
+    "AKBNK.IS": {
+      "coverage": {
+        "requested_start": "2025-01-01",
+        "requested_end_inclusive": "2026-10-01",
+        "actual_start": "2025-01-02",
+        "actual_end": "2026-09-30",
+        "rows": 440,
+        "end_date_observed": false
+      },
+      "provenance": {
+        "source": "local_cache_unverified",
+        "independently_verified": false,
+        "sha256": "b5b7537d6bc69cecc0edfb82a2d3dd4d0b1c0ba74bf7e9fd76944b0b8496d7d3"
+      }
+    },
+    "ASELS.IS": {
+      "coverage": {
+        "requested_start": "2025-01-01",
+        "requested_end_inclusive": "2026-10-01",
+        "actual_start": "2025-01-02",
+        "actual_end": "2026-09-30",
+        "rows": 440,
+        "end_date_observed": false
+      },
+      "provenance": {
+        "source": "local_cache_unverified",
+        "independently_verified": false,
+        "sha256": "35d074a37928e65d5474afc554739e8141540df9609e1bb693b607db65552fdf"
+      }
+    },
+    "TUPRS.IS": {
+      "coverage": {
+        "requested_start": "2025-01-01",
+        "requested_end_inclusive": "2026-10-01",
+        "actual_start": "2025-01-02",
+        "actual_end": "2026-09-30",
+        "rows": 440,
+        "end_date_observed": false
+      },
+      "provenance": {
+        "source": "local_cache_unverified",
+        "independently_verified": false,
+        "sha256": "9aa1a427d84944ac38240b5964781d49f0e8800d1155afc4dc222fa88beaf703"
+      }
+    },
+    "TCELL.IS": {
+      "coverage": {
+        "requested_start": "2025-01-01",
+        "requested_end_inclusive": "2026-10-01",
+        "actual_start": "2025-01-02",
+        "actual_end": "2026-09-30",
+        "rows": 440,
+        "end_date_observed": false
+      },
+      "provenance": {
+        "source": "local_cache_unverified",
+        "independently_verified": false,
+        "sha256": "5a276c837093d6b6b8c76f28c977aea1dda75215c54cf4bb9948fbb31cb5c1ef"
+      }
+    },
+    "FROTO.IS": {
+      "coverage": {
+        "requested_start": "2025-01-01",
+        "requested_end_inclusive": "2026-10-01",
+        "actual_start": "2025-01-02",
+        "actual_end": "2026-09-30",
+        "rows": 440,
+        "end_date_observed": false
+      },
+      "provenance": {
+        "source": "local_cache_unverified",
+        "independently_verified": false,
+        "sha256": "2b21ce46b5e097cdb0d2509f0738611e886ff9aead6240ab3278db1ea76bfc3f"
+      }
+    },
+    "EREGL.IS": {
+      "coverage": {
+        "requested_start": "2025-01-01",
+        "requested_end_inclusive": "2026-10-01",
+        "actual_start": "2025-01-02",
+        "actual_end": "2026-09-30",
+        "rows": 440,
+        "end_date_observed": false
+      },
+      "provenance": {
+        "source": "local_cache_unverified",
+        "independently_verified": false,
+        "sha256": "8e508c6246ddd76bd93da9377fc01a13f1aefedec18e11db611e00b0741b1c9f"
+      }
+    }
+  }
+}

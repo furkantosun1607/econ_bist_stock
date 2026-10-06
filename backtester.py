@@ -4,7 +4,7 @@ BIST Algorithmic Trading Challenge - Backtest Engine
 Sinyalleri ve risk parametrelerini alarak gercekci portfoy simulasyonu yapar.
 
 Temel Ozellikler:
-- No Look-Ahead garantisi (strict simulation: next_open veya same_close)
+- Nedensel next_open simulasyonu; same_close iyimser karsilastirma modu
 - RiskManager entegrasyonu (stop-loss, trailing stop, ATR stop, max holding)
 - Position sizing destegi (full capital, risk-bazli, yuzde-bazli)
 - Komisyon ve slippage modellemesi
@@ -365,7 +365,7 @@ class BacktestResult:
 
 class Backtester:
     """
-    Sinyal tabanli, look-ahead icermeyen backtest motoru.
+    Sinyal tabanli backtest motoru; nedensel emirler icin next_open kullanin.
     
     Parametreler:
         initial_capital: Baslangic sermayesi (TL, varsayilan: 100,000)
@@ -374,7 +374,7 @@ class Backtester:
         slippage_rate: Slippage orani (orn: 0.0005)
         execution_mode: Emrin gerceklesme zamani
             "next_open"  : Sinyal gunu kapanista olusur, ertesi gun acilisinda islem yapilir (gercekci & onerilen)
-            "same_close" : Sinyal olusan gunun kapanisinda islem yapilir
+            "same_close" : Kapanis bilgisiyle ayni kapanista dolum varsayan iyimser mod
         close_at_end: Backtest sonunda acik pozisyon varsa son gun kapanisinda zorla kapat
     """
 
@@ -403,13 +403,13 @@ class Backtester:
         for col in ["ATR", "ATR_14", "atr", "atr_14"]:
             if hasattr(row, col):
                 val = getattr(row, col)
-                if pd.notna(val):
+                if pd.notna(val) and np.isfinite(val) and val > 0:
                     return float(val)
         # hasattr bulunamadiysa sozluk/Series olarak bak
         if hasattr(row, "_asdict"):
             d = row._asdict()
             for k, v in d.items():
-                if "ATR" in str(k).upper() and pd.notna(v):
+                if "ATR" in str(k).upper() and pd.notna(v) and np.isfinite(v) and v > 0:
                     return float(v)
         return None
 
@@ -481,7 +481,9 @@ class Backtester:
         """
         Next Open Simulation:
         Gunun kapanisinda uretilen sinyal, ertesi gunun ACILISINDA gerceklesir.
-        Giris/cikis intraday stoplari bar araliginda (High/Low) test edilir.
+        Sizing ve gun ici stoplar onceki tamamlanmis barin ATR degerini kullanir.
+        Gun ici stoplar onceki tepeye gore sabittir; bugunun High degeri ancak
+        sonraki barin stopunu etkiler. Gap durumunda dolum acilis fiyatindandir.
         """
         cash = self.initial_capital
         position: dict[str, Any] | None = None
@@ -495,6 +497,7 @@ class Backtester:
 
         n_bars = len(df)
         indices = df.index
+        previous_atr = None
 
         for i, row in enumerate(df.itertuples()):
             dt = indices[i]
@@ -503,7 +506,8 @@ class Backtester:
             low_p = float(row.Low)
             close_p = float(row.Close)
             signal = int(row.Signal)
-            atr = self._get_atr(row)
+            atr = previous_atr
+            previous_atr = self._get_atr(row)
 
             bar_action = ""
             bar_pnl = 0.0
@@ -576,7 +580,7 @@ class Backtester:
                 days_held = i - position["entry_bar"]
 
                 # Stop seviyesini mevcut tepeye gore hesapla
-                stop_price = self.risk_manager.get_stop_price(
+                stop_price, stop_reason = self.risk_manager.get_stop_order(
                     entry_price=position["entry_price"],
                     high_since_entry=position["high"],
                     current_atr=atr,
@@ -587,16 +591,6 @@ class Backtester:
                     # Gap down kontrolu: Acilis stopun altindaysa acilistan sat
                     raw_exit = min(open_p, stop_price)
                     fill_price = raw_exit * (1.0 - self.slippage_rate)
-
-                    _, stop_reason = self.risk_manager.check_exit(
-                        entry_price=position["entry_price"],
-                        current_price=low_p,
-                        high_since_entry=position["high"],
-                        current_atr=atr,
-                        days_held=days_held,
-                    )
-                    if not stop_reason:
-                        stop_reason = "stop_loss"
 
                     gross = position["shares"] * fill_price
                     comm = gross * self.commission_rate
@@ -740,7 +734,8 @@ class Backtester:
     ) -> BacktestResult:
         """
         Same Close Simulation:
-        Sinyal olustugu gunun KAPANISINDA islem yapilir.
+        Sinyal olustugu gunun KAPANISINDA islem yapildigi varsayilir (iyimser).
+        Gun ici stoplar sadece onceki tamamlanmis ATR ve tepeyi kullanir.
         """
         cash = self.initial_capital
         position: dict[str, Any] | None = None
@@ -753,6 +748,7 @@ class Backtester:
 
         n_bars = len(df)
         indices = df.index
+        previous_atr = None
 
         for i, row in enumerate(df.itertuples()):
             dt = indices[i]
@@ -761,7 +757,9 @@ class Backtester:
             low_p = float(row.Low)
             close_p = float(row.Close)
             signal = int(row.Signal)
+            intraday_atr = previous_atr
             atr = self._get_atr(row)
+            previous_atr = atr
 
             bar_action = ""
             bar_pnl = 0.0
@@ -772,25 +770,15 @@ class Backtester:
             if position is not None and self.risk_manager is not None:
                 days_held = i - position["entry_bar"]
 
-                stop_price = self.risk_manager.get_stop_price(
+                stop_price, stop_reason = self.risk_manager.get_stop_order(
                     entry_price=position["entry_price"],
                     high_since_entry=position["high"],
-                    current_atr=atr,
+                    current_atr=intraday_atr,
                 )
 
                 if stop_price is not None and low_p <= stop_price:
                     raw_exit = min(open_p, stop_price)
                     fill_price = raw_exit * (1.0 - self.slippage_rate)
-
-                    _, stop_reason = self.risk_manager.check_exit(
-                        entry_price=position["entry_price"],
-                        current_price=low_p,
-                        high_since_entry=position["high"],
-                        current_atr=atr,
-                        days_held=days_held,
-                    )
-                    if not stop_reason:
-                        stop_reason = "stop_loss"
 
                     gross = position["shares"] * fill_price
                     comm = gross * self.commission_rate

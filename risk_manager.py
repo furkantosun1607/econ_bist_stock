@@ -69,7 +69,7 @@ class RiskManager:
         """
         Pozisyondan cikis gerekip gerekmedegini kontrol eder.
         
-        Birden fazla mekanizma aktifse, ilk tetiklenen kazanir.
+        Birden fazla stop aktifse en yuksek fiyatli stop once tetiklenir.
         
         Args:
             entry_price: Giris fiyati
@@ -82,24 +82,11 @@ class RiskManager:
             (should_exit: bool, reason: str)
             reason: "stop_loss", "trailing_stop", "atr_stop", "max_hold", "" (cikis yok)
         """
-        # 1. Stop-Loss (sabit yuzde)
-        if self.stop_loss_pct is not None:
-            loss_pct = (entry_price - current_price) / entry_price
-            if loss_pct >= self.stop_loss_pct:
-                return True, "stop_loss"
-        
-        # 2. Trailing Stop (en yuksekten dusus)
-        if self.trailing_stop_pct is not None:
-            if high_since_entry > 0:
-                drop_from_high = (high_since_entry - current_price) / high_since_entry
-                if drop_from_high >= self.trailing_stop_pct:
-                    return True, "trailing_stop"
-        
-        # 3. ATR Stop (ATR bazli stop-loss)
-        if self.atr_stop_multiplier is not None and current_atr is not None:
-            atr_stop_level = entry_price - (self.atr_stop_multiplier * current_atr)
-            if current_price <= atr_stop_level:
-                return True, "atr_stop"
+        stop_price, reason = self.get_stop_order(
+            entry_price, high_since_entry, current_atr
+        )
+        if stop_price is not None and current_price <= stop_price:
+            return True, reason
         
         # 4. Maximum Holding Period
         if self.max_holding_days is not None:
@@ -171,20 +158,38 @@ class RiskManager:
         Returns:
             Stop fiyati veya None (stop aktif degilse)
         """
-        stop_levels = []
+        return self.get_stop_order(entry_price, high_since_entry, current_atr)[0]
+
+    def get_stop_order(
+        self,
+        entry_price: float,
+        high_since_entry: float,
+        current_atr: float | None = None,
+    ) -> tuple[float | None, str]:
+        """En siki aktif stopun fiyatini ve ayni emre ait cikis sebebini dondur.
+
+        ATR ve tepe, emrin yerlestirildigi anda bilinen degerler olmalidir.
+        Esit seviyelerde sabit stop, trailing stop, ATR stop sirasi korunur.
+        """
+        stop_levels: list[tuple[float, str]] = []
         
         if self.stop_loss_pct is not None:
-            stop_levels.append(entry_price * (1 - self.stop_loss_pct))
+            stop_levels.append((entry_price * (1 - self.stop_loss_pct), "stop_loss"))
         
         if self.trailing_stop_pct is not None and high_since_entry > 0:
-            stop_levels.append(high_since_entry * (1 - self.trailing_stop_pct))
+            stop_levels.append((high_since_entry * (1 - self.trailing_stop_pct), "trailing_stop"))
         
-        if self.atr_stop_multiplier is not None and current_atr is not None:
-            stop_levels.append(entry_price - (self.atr_stop_multiplier * current_atr))
+        if (
+            self.atr_stop_multiplier is not None
+            and current_atr is not None
+            and np.isfinite(current_atr)
+            and current_atr > 0
+        ):
+            stop_levels.append((entry_price - (self.atr_stop_multiplier * current_atr), "atr_stop"))
         
         if stop_levels:
-            return max(stop_levels)  # En siki stop = en yuksek seviye
-        return None
+            return max(stop_levels, key=lambda stop: stop[0])
+        return None, ""
     
     def get_active_mechanisms(self) -> list[str]:
         """Aktif risk mekanizmalarini listeler."""

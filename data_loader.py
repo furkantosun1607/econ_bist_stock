@@ -14,6 +14,10 @@ Kullanım:
     all_data = load_all_stocks()  # dict[str, pd.DataFrame]
 """
 
+import hashlib
+import warnings
+
+import numpy as np
 import pandas as pd
 import yfinance as yf
 from pathlib import Path
@@ -45,7 +49,8 @@ def _download_from_yfinance(ticker: str) -> pd.DataFrame:
     df = yf.download(
         ticker,
         start=START_DATE,
-        end=END_DATE,
+        # yfinance's end is exclusive; the assignment's final date is inclusive.
+        end=(pd.Timestamp(END_DATE) + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
         auto_adjust=True,   # Adjusted close kullan
         progress=False,
     )
@@ -79,11 +84,26 @@ def _clean_data(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     Veri temizliği ve doğrulama.
     
     - NaN satırları kaldır
-    - Negatif fiyat kontrolü
+    - Gecersiz OHLCV degerlerini reddet
     - Tarih sıralama
     - Duplicate tarih kontrolü
     """
     name = get_short_name(ticker)
+    required_cols = ["Open", "High", "Low", "Close", "Volume"]
+    missing = set(required_cols).difference(df.columns)
+    if missing:
+        raise ValueError(f"{ticker}: missing OHLCV columns: {sorted(missing)}")
+    df = df[required_cols].copy()
+    try:
+        df.index = pd.DatetimeIndex(pd.to_datetime(df.index, errors="raise"))
+        if df.index.tz is not None:
+            df.index = df.index.tz_localize(None)
+        df[required_cols] = df[required_cols].apply(pd.to_numeric, errors="raise")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{ticker}: invalid dates or non-numeric OHLCV data") from exc
+    if df.index.hasnans:
+        raise ValueError(f"{ticker}: missing dates")
+    df.index.name = "Date"
     original_len = len(df)
     
     # NaN kaldır
@@ -101,14 +121,51 @@ def _clean_data(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
         df = df[~df.index.duplicated(keep="first")]
         print(f"  [!] {name}: {dup_count} duplicate tarih kaldirildi")
     
-    # Negatif fiyat kontrolü
+    # A cache may have been collected for a different requested interval.
+    df = df.loc[(df.index >= pd.Timestamp(START_DATE)) &
+                (df.index <= pd.Timestamp(END_DATE))].copy()
+    if df.empty:
+        raise ValueError(f"{ticker}: no usable OHLCV rows in the requested interval")
+
+    # Reject corrupted inputs rather than allowing impossible fills in a backtest.
     price_cols = ["Open", "High", "Low", "Close"]
-    for col in price_cols:
-        if (df[col] <= 0).any():
-            bad_count = (df[col] <= 0).sum()
-            print(f"  [!] {name}: {col} kolonunda {bad_count} negatif/sifir deger!")
+    if not np.isfinite(df[required_cols].to_numpy(dtype=float)).all():
+        raise ValueError(f"{ticker}: non-finite OHLCV values")
+    if (df[price_cols] <= 0).any().any() or (df["Volume"] < 0).any():
+        raise ValueError(f"{ticker}: prices must be positive and volume non-negative")
+    invalid_range = ((df["High"] < df[["Open", "Low", "Close"]].max(axis=1)) |
+                     (df["Low"] > df[["Open", "High", "Close"]].min(axis=1)))
+    if invalid_range.any():
+        raise ValueError(f"{ticker}: inconsistent OHLC price ranges")
     
     return df
+
+
+def _annotate_data(df: pd.DataFrame, source: str, cache_path: Path | None = None):
+    """Expose actual coverage and provenance without inventing missing prices."""
+    coverage = {
+        "requested_start": START_DATE,
+        "requested_end_inclusive": END_DATE,
+        "actual_start": df.index[0].strftime("%Y-%m-%d"),
+        "actual_end": df.index[-1].strftime("%Y-%m-%d"),
+        "rows": len(df),
+        "end_date_observed": pd.Timestamp(END_DATE) in df.index,
+    }
+    df.attrs["data_coverage"] = coverage
+    df.attrs["data_provenance"] = {
+        "source": source,
+        "independently_verified": False,
+        "sha256": hashlib.sha256(cache_path.read_bytes()).hexdigest()
+        if cache_path is not None else None,
+    }
+    if df.index[-1] < pd.Timestamp(END_DATE):
+        warnings.warn(
+            f"Data ends on {coverage['actual_end']}; requested inclusive end is "
+            f"{END_DATE}. Full-period coverage has not been verified. "
+            "No missing bars were filled or downloaded automatically.",
+            UserWarning,
+            stacklevel=3,
+        )
 
 
 def _print_data_summary(df: pd.DataFrame, ticker: str):
@@ -140,6 +197,8 @@ def load_stock_data(
     # Cache'den oku
     if use_cache and not force_download and cache_path.exists():
         df = pd.read_csv(cache_path, index_col="Date", parse_dates=True)
+        df = _clean_data(df, ticker)
+        _annotate_data(df, source="local_cache_unverified", cache_path=cache_path)
         _print_data_summary(df, ticker)
         return df
     
@@ -152,6 +211,8 @@ def load_stock_data(
     # Cache'e kaydet
     if use_cache:
         df.to_csv(cache_path)
+    _annotate_data(df, source="yfinance_auto_adjust",
+                   cache_path=cache_path if use_cache else None)
     
     _print_data_summary(df, ticker)
     return df

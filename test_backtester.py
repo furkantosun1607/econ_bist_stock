@@ -302,6 +302,116 @@ class TestBacktester(unittest.TestCase):
         self.assertTrue(comp_pass["passed"])
         self.assertTrue(comp_pass["fully_passed"])
 
+    def test_next_open_position_size_uses_completed_atr(self):
+        """Changing an entry day's future ATR cannot change its opening size."""
+        df = create_dummy_df([(100, 101, 99, 100)] * 4)
+        df["Signal"] = [1, 0, -1, 0]
+        rm = RiskManager(risk_per_trade_pct=0.02, atr_stop_multiplier=2)
+        for future_atr in (20.0, 200.0):
+            with self.subTest(future_atr=future_atr):
+                df["ATR_14"] = [2.0, future_atr, future_atr, future_atr]
+                result = Backtester(risk_manager=rm).run(df)
+                self.assertEqual(result.trades[0].shares, 500)
+                self.assertEqual(result.trades[0].entry_date, df.index[1])
+
+    def test_intraday_atr_stop_uses_previous_completed_bar(self):
+        """A volatility shock during today's session cannot widen today's stop."""
+        df = create_dummy_df([
+            (100, 101, 99, 100),
+            (100, 101, 95, 99),
+            (100, 101, 99, 100),
+        ])
+        df["Signal"] = [1, 0, 0]
+        df["ATR_14"] = [2.0, 20.0, 20.0]
+        for mode in ("next_open", "same_close"):
+            with self.subTest(mode=mode):
+                result = Backtester(
+                    risk_manager=RiskManager(atr_stop_multiplier=2),
+                    execution_mode=mode,
+                ).run(df)
+                trade = result.trades[0]
+                self.assertEqual(trade.exit_date, df.index[1])
+                self.assertEqual(trade.exit_price, 96.0)
+                self.assertEqual(trade.exit_reason, "atr_stop")
+
+    def test_stop_gap_fills_at_open_below_stop(self):
+        df = create_dummy_df([
+            (100, 101, 99, 100),
+            (100, 102, 99, 100),
+            (80, 85, 75, 82),
+        ])
+        df["Signal"] = [1, 0, 0]
+        for mode in ("next_open", "same_close"):
+            with self.subTest(mode=mode):
+                result = Backtester(
+                    risk_manager=RiskManager(stop_loss_pct=0.05),
+                    execution_mode=mode,
+                    commission_rate=0.001,
+                    slippage_rate=0.01,
+                ).run(df)
+                trade = result.trades[0]
+                self.assertEqual(trade.exit_reason, "stop_loss")
+                self.assertAlmostEqual(trade.exit_price, 80 * 0.99)
+                self.assertAlmostEqual(
+                    result.final_capital, result.initial_capital + trade.pnl, places=2
+                )
+
+    def test_trailing_stop_does_not_use_same_bar_high(self):
+        """OHLC does not reveal whether today's high preceded today's low."""
+        df = create_dummy_df([
+            (100, 101, 99, 100),
+            (100, 120, 99, 110),
+        ])
+        df["Signal"] = [1, 0]
+        result = Backtester(
+            risk_manager=RiskManager(trailing_stop_pct=0.10),
+            close_at_end=False,
+        ).run(df)
+        self.assertEqual(result.total_trades, 0)
+        self.assertEqual(result.df["Position"].iloc[-1], 1)
+        self.assertEqual(result.final_capital, 110_000)
+
+    def test_stop_reason_matches_tightest_stop_even_if_low_crosses_both(self):
+        df = create_dummy_df([
+            (100, 101, 99, 100),
+            (100, 120, 99, 118),
+            (115, 116, 70, 80),
+        ])
+        df["Signal"] = [1, 0, 0]
+        rm = RiskManager(stop_loss_pct=0.20, trailing_stop_pct=0.05)
+        result = Backtester(risk_manager=rm).run(df)
+        self.assertEqual(result.trades[0].exit_price, 114.0)
+        self.assertEqual(result.trades[0].exit_reason, "trailing_stop")
+        self.assertEqual(rm.check_exit(100, 70, 120), (True, "trailing_stop"))
+
+    def test_minimum_completed_trade_rule_and_strict_benchmark(self):
+        trade = Trade("2025-01-01", 10, "2025-01-02", 11, 100, 100, 10, "signal")
+        for final_capital, count, expected in (
+            (190_000, 2, False),
+            (184_000, 3, False),
+            (190_000, 3, True),
+        ):
+            with self.subTest(final_capital=final_capital, trades=count):
+                result = BacktestResult(
+                    ticker="AKBNK.IS", strategy_name="Test",
+                    initial_capital=100_000, final_capital=final_capital,
+                    total_net_profit=final_capital - 100_000,
+                    total_net_profit_pct=(final_capital - 100_000) / 1000,
+                    trades=[trade] * count,
+                    equity_curve=pd.Series([final_capital]), df=pd.DataFrame(),
+                )
+                self.assertEqual(result.compare_with_benchmark()["fully_passed"], expected)
+
+    def test_open_position_does_not_count_as_completed_trade(self):
+        df = create_dummy_df([(100, 101, 99, 100)] * 4)
+        df["Signal"] = [1, 1, 1, 1]
+        result = Backtester(close_at_end=False).run(df, ticker="TCELL.IS")
+        comparison = result.compare_with_benchmark()
+        self.assertTrue(comparison["passed"])
+        self.assertEqual(result.total_trades, 0)
+        self.assertFalse(comparison["meets_trade_rule"])
+        self.assertFalse(comparison["fully_passed"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

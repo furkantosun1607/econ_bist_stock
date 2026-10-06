@@ -1,0 +1,85 @@
+{
+  "strategy": "Adaptive_Regime",
+  "class": "strategies.adaptive_regime.AdaptiveRegimeStrategy",
+  "parameters": {
+    "fast_period": 20,
+    "slow_period": 60,
+    "rsi_period": 3,
+    "mean_period": 10,
+    "atr_period": 14,
+    "warmup_period": 60,
+    "oversold": 20.0,
+    "pullback": 50.0,
+    "overbought": 70.0,
+    "atr_multiplier": 5.0
+  },
+  "research_parameters": {
+    "kind": "pullback",
+    "fast": 20,
+    "slow": 60,
+    "trail": 5,
+    "threshold": 20
+  },
+  "development_start": "2025-01-02",
+  "development_end": "2025-12-31",
+  "holdout_start": "2026-01-01",
+  "candidate_count": 24,
+  "development_bars": {
+    "AKBNK": 251,
+    "ASELS": 251,
+    "EREGL": 251,
+    "FROTO": 251,
+    "TCELL": 251,
+    "TUPRS": 251
+  },
+  "development_sha256": {
+    "AKBNK": "de7fff9a4e417721fabf97cbdce256a16570efa6fe64580a69fb1ec24b26b989",
+    "ASELS": "9cc5caec8c02c71a0e8704c60da3293d0510bc495d0c49593d4f0fafcea61e72",
+    "EREGL": "503551608a63a71c1bb05430cffb0f45f572318e9a2c83f328a48a5275d94bc1",
+    "FROTO": "4ce70d4af811964f440b1d7cf5f1a83025641309bfcd47dada8b5340b51d1d82",
+    "TCELL": "cfb6f7bab49d9901a635c874e818be51cac4d0bbd1efd27bb446c6d33ce2019c",
+    "TUPRS": "6ce3b23f7e0dc9b2fe8a38aef4207e51098b0918f40119bbe6c3408167e116fc"
+  },
+  "selection_rule": "At least 3 completed trades per stock; maximize worst stock return, then median return, then worst drawdown (four decimal reporting precision)",
+  "scope": "Development-selected experimental model; not global optimum or a guarantee of any benchmark",
+  "execution": "next_open; full capital integer lots; zero commission/slippage; close-based ATR risk; no external intraday stops",
+  "holdout_used_for_selection": false,
+  "development_metrics": {
+    "AKBNK": {
+      "return": 0.1827,
+      "dd": -0.1859,
+      "trades": 5
+    },
+    "ASELS": {
+      "return": 0.716,
+      "dd": -0.1887,
+      "trades": 5
+    },
+    "EREGL": {
+      "return": 0.2287,
+      "dd": -0.1881,
+      "trades": 7
+    },
+    "FROTO": {
+      "return": 0.0035,
+      "dd": -0.2103,
+      "trades": 8
+    },
+    "TCELL": {
+      "return": 0.0049,
+      "dd": -0.1749,
+      "trades": 8
+    },
+    "TUPRS": {
+      "return": 0.457,
+      "dd": -0.1213,
+      "trades": 4
+    },
+    "worst": 0.0035,
+    "median": 0.2057,
+    "mean": 0.2655,
+    "worst_dd": -0.2103,
+    "min_trades": 4,
+    "eligible": true
+  }
+}

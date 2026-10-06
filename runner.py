@@ -18,22 +18,30 @@ Akis:
 
 Kullanim:
     # Python icinden:
-    from runner import run_pipeline
+    from runner import run_pipeline, get_strategy
+    from strategies.adaptive_regime import AdaptiveRegimeStrategy
+
+    # Varsayilan Adaptive Regime stratejisi (kapanis bazli 5x ATR trailing exit):
+    strategy = AdaptiveRegimeStrategy()
+    results, challenge_eval, df_summary = run_pipeline(strategy, execution_mode="next_open")
+
+    # Veya alternatif SMA Crossover referansi:
     from strategies.sma_crossover import SmaCrossoverStrategy
     from risk_manager import RiskManager
-
-    strategy = SmaCrossoverStrategy(fast_period=10, slow_period=50)
+    sma = SmaCrossoverStrategy(fast_period=10, slow_period=50)
     rm = RiskManager(stop_loss_pct=0.05, trailing_stop_pct=0.03)
-    results, challenge_eval, df_summary = run_pipeline(strategy, rm)
+    results, challenge_eval, df_summary = run_pipeline(sma, risk_manager=rm)
 
     # Terminalden:
-    python runner.py
-    python runner.py --fast 10 --slow 50 --stop-loss 0.05 --trailing-stop 0.03
+    python runner.py                    # Varsayilan: adaptive_regime, next_open
+    python runner.py --no-charts        # Hizli calisma
+    python runner.py --strategy sma_crossover --fast 10 --slow 50 --stop-loss 0.05 --trailing-stop 0.03
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -63,6 +71,7 @@ from metrics import (
 )
 from risk_manager import RiskManager
 from strategies.sma_crossover import SmaCrossoverStrategy
+from strategies.adaptive_regime import AdaptiveRegimeStrategy
 from strategy_base import StrategyBase
 from visualizer import (
     plot_all_dashboards,
@@ -76,6 +85,7 @@ from visualizer import (
 # ============================================================
 
 STRATEGIES: dict[str, type[StrategyBase]] = {
+    "adaptive_regime": AdaptiveRegimeStrategy,
     "sma_crossover": SmaCrossoverStrategy,
 }
 
@@ -137,6 +147,8 @@ def run_pipeline(
     """
     stocks = stocks or STOCKS
     strategy_name = strategy.get_name()
+    if isinstance(strategy, AdaptiveRegimeStrategy) and execution_mode != "next_open":
+        raise ValueError("AdaptiveRegimeStrategy requires next_open execution.")
 
     if print_summary:
         print("=" * 70)
@@ -149,7 +161,7 @@ def run_pipeline(
             mechanisms = risk_manager.get_active_mechanisms()
             print(f"  Risk Yonetimi    : {', '.join(mechanisms)}")
         else:
-            print("  Risk Yonetimi    : Pasif (Sadece Strateji Sinyalleri)")
+            print("  Risk Yonetimi    : Strateji sinyalleri (Adaptive: kapanis bazli ATR cikisi)")
         print("=" * 70)
 
     # 1. Backtester Motorunu Hazirla
@@ -194,8 +206,24 @@ def run_pipeline(
     if save_metrics:
         csv_path = save_metrics_to_csv(df_summary)
         md_content = generate_markdown_report(results, strategy_name=strategy_name)
+        md_content += ("\n\n## Calistirma Ayarlari\n\n"
+                       f"- Parametreler: `{strategy.get_params()}`\n"
+                       f"- Emir modu: `{execution_mode}`\n"
+                       f"- Komisyon: {commission_rate}; kayma: {slippage_rate}\n"
+                       f"- Harici risk yoneticisi: `{risk_manager}`\n")
         md_path = RESULTS_DIR / "metrics_report.md"
         md_path.write_text(md_content, encoding="utf-8")
+        metadata = {
+            "strategy": strategy_name, "params": strategy.get_params(),
+            "execution_mode": execution_mode, "initial_capital": initial_capital,
+            "commission_rate": commission_rate, "slippage_rate": slippage_rate,
+            "risk_manager": risk_manager.get_params() if risk_manager else None,
+            "data": {ticker: {"coverage": res.df.attrs.get("data_coverage", {}),
+                               "provenance": res.df.attrs.get("data_provenance", {})}
+                     for ticker, res in results.items()},
+        }
+        (RESULTS_DIR / "run_metadata.json").write_text(
+            json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
         if print_summary:
             print(f"\n[OK] Metrik ozetleri kaydedildi: {csv_path.name}, {md_path.name}")
 
@@ -223,7 +251,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "--strategy", type=str, default="sma_crossover",
+        "--strategy", type=str, default="adaptive_regime",
         choices=list(STRATEGIES.keys()),
         help="Calistirilacak strateji adi",
     )
@@ -236,12 +264,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Yavas hareketli ortalama periyodu (SMA Crossover icin)",
     )
     parser.add_argument(
-        "--stop-loss", type=float, default=0.05,
-        help="Stop-loss yuzdesi (orn: 0.05 = %%5, 0 = kapali)",
+        "--stop-loss", type=float, default=None,
+        help="Ek stop-loss (SMA varsayilan %%5; adaptive varsayilan kapali; 0=kapali)",
     )
     parser.add_argument(
-        "--trailing-stop", type=float, default=0.03,
-        help="Trailing stop yuzdesi (orn: 0.03 = %%3, 0 = kapali)",
+        "--trailing-stop", type=float, default=None,
+        help="Ek trailing stop (SMA varsayilan %%3; adaptive ATR sinyali kullanir; 0=kapali)",
     )
     parser.add_argument(
         "--max-holding-days", type=int, default=None,
@@ -271,6 +299,8 @@ def main():
     """CLI ana calistirma fonksiyonu."""
     parser = build_parser()
     args = parser.parse_args()
+    if args.strategy == "adaptive_regime" and args.mode != "next_open":
+        parser.error("adaptive_regime sadece --mode next_open ile calisir.")
 
     # Strateji nesnesini olustur
     if args.strategy == "sma_crossover":
@@ -279,8 +309,13 @@ def main():
         strategy = get_strategy(args.strategy)
 
     # Risk yoneticisi olustur
-    stop_loss = args.stop_loss if args.stop_loss > 0 else None
-    trailing_stop = args.trailing_stop if args.trailing_stop > 0 else None
+    stop_loss = args.stop_loss
+    trailing_stop = args.trailing_stop
+    if args.strategy == "sma_crossover":
+        stop_loss = .05 if stop_loss is None else stop_loss
+        trailing_stop = .03 if trailing_stop is None else trailing_stop
+    stop_loss = stop_loss if stop_loss is not None and stop_loss > 0 else None
+    trailing_stop = trailing_stop if trailing_stop is not None and trailing_stop > 0 else None
 
     rm = None
     if stop_loss is not None or trailing_stop is not None or args.max_holding_days is not None:

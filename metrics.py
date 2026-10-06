@@ -155,8 +155,8 @@ def compare_with_benchmark(
     diff_tl = final_capital - bm_final
     diff_pct = (diff_tl / bm_final * 100.0) if bm_final > 0 else 0.0
     
-    passed_capital = final_capital > bm_final
-    meets_trade_rule = (total_trades >= 3) if total_trades > 0 else True
+    passed_capital = bool(bm) and final_capital > bm_final
+    meets_trade_rule = total_trades >= 3
     fully_passed = passed_capital and meets_trade_rule
 
     return {
@@ -500,13 +500,27 @@ def evaluate_challenge(results: dict[str, Any]) -> dict[str, Any]:
         else:
             failed_stocks.append(m.short_name)
 
-    all_passed = (len(passed_stocks) == total_stocks) and (total_stocks >= 6)
+    from config import STOCKS
+    required_stocks_present = set(STOCKS).issubset(results)
+    identities_match = all(ticker == res.ticker for ticker, res in results.items())
+    performance_all_passed = (len(passed_stocks) == total_stocks and
+                              required_stocks_present and identities_match)
+    incomplete_data = [ticker for ticker, res in results.items()
+                       if getattr(res, "df", pd.DataFrame()).attrs.get(
+                           "data_coverage", {}).get("end_date_observed") is False]
+    all_passed = performance_all_passed and not incomplete_data
+    status = "CHALLENGE PASSED" if all_passed else "CHALLENGE FAILED"
+    if incomplete_data:
+        status += " (PROVISIONAL: INCOMPLETE DATA)"
     total_profit = total_final - total_initial
     total_profit_pct = (total_profit / total_initial * 100.0) if total_initial > 0 else 0.0
 
     return {
         "all_passed": all_passed,
-        "challenge_status": "CHALLENGE PASSED" if all_passed else "CHALLENGE FAILED",
+        "performance_all_passed": performance_all_passed,
+        "incomplete_data": incomplete_data,
+        "required_stocks_present": required_stocks_present,
+        "challenge_status": status,
         "passed_stocks": passed_stocks,
         "failed_stocks": failed_stocks,
         "passed_count": len(passed_stocks),
@@ -554,6 +568,17 @@ def generate_markdown_report(results: dict[str, Any], strategy_name: str = "Stra
         "| Hisse | Baslangic | Final | Net Kar | Benchmark | Fark | Trades | Win% | MaxDD% | Durum |",
         "|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|",
     ]
+    coverage_lines = ["", "## Veri Kapsami", ""]
+    for ticker, result in results.items():
+        frame = getattr(result, "df", pd.DataFrame())
+        if not frame.empty:
+            coverage_lines.append(
+                f"- {get_short_name(ticker)}: {frame.index[0]:%Y-%m-%d} — "
+                f"{frame.index[-1]:%Y-%m-%d} ({len(frame)} bar).")
+    if eval_res["incomplete_data"]:
+        coverage_lines += ["", "**Gecici sonuc:** Istenen son tarih veride yok. "
+                           "Bu tablo mevcut orneklemin benchmark karsilastirmasidir; "
+                           "tam donem challenge basarisi olarak onaylanamaz."]
 
     for _, row in df.iterrows():
         status_icon = "PASS" if row["Durum"] == "PASS" else "FAIL"
@@ -574,7 +599,7 @@ def generate_markdown_report(results: dict[str, Any], strategy_name: str = "Stra
         "",
     ])
 
-    return "\n".join(lines)
+    return "\n".join(lines + coverage_lines)
 
 
 def print_metrics_summary(results: dict[str, Any], strategy_name: str = "Strategy"):
@@ -634,17 +659,42 @@ def print_metrics_summary(results: dict[str, Any], strategy_name: str = "Strateg
 # ============================================================
 
 if __name__ == "__main__":
+    import argparse
     from backtester import Backtester
     from risk_manager import RiskManager
+    from strategies.adaptive_regime import AdaptiveRegimeStrategy
     from strategies.sma_crossover import SmaCrossoverStrategy
 
+    parser = argparse.ArgumentParser(
+        description="BIST Challenge - Metrik Hesaplama ve Raporlama Test Modulu",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--strategy",
+        type=str,
+        default="adaptive_regime",
+        choices=["adaptive_regime", "sma_crossover"],
+        help="Test edilecek strateji",
+    )
+    parser.add_argument(
+        "--save-report",
+        action="store_true",
+        default=False,
+        help="Raporu results/metrics_report.md dosyasina kaydet",
+    )
+    args = parser.parse_args()
+
     print("=" * 65)
-    print("METRICS MODUL TESTI (Phase 6)")
+    print(f"METRICS MODUL TESTI: {args.strategy}")
     print("=" * 65)
 
-    # 1. Backtest calistir (SMA Crossover + Risk Manager)
-    strategy = SmaCrossoverStrategy(10, 50)
-    rm = RiskManager(stop_loss_pct=0.05, trailing_stop_pct=0.03)
+    if args.strategy == "adaptive_regime":
+        strategy = AdaptiveRegimeStrategy()
+        rm = None
+    else:
+        strategy = SmaCrossoverStrategy(10, 50)
+        rm = RiskManager(stop_loss_pct=0.05, trailing_stop_pct=0.03)
+
     bt = Backtester(initial_capital=100_000, risk_manager=rm, execution_mode="next_open")
 
     print("\nTum 6 hisse icin backtest calistiriliyor...")
@@ -678,14 +728,13 @@ if __name__ == "__main__":
 
     # 4. CSV kaydetme testi
     df_summary = generate_summary_table(results)
-    csv_file = save_metrics_to_csv(df_summary)
-    print(f"Metrik ozet tablosu kaydedildi: {csv_file}")
-
-    # 5. Markdown rapor testi
-    md_report = generate_markdown_report(results, strategy.get_name())
-    report_file = RESULTS_DIR / "metrics_report.md"
-    report_file.write_text(md_report, encoding="utf-8")
-    print(f"Markdown rapor kaydedildi: {report_file}")
+    if args.save_report:
+        csv_file = save_metrics_to_csv(df_summary)
+        print(f"Metrik ozet tablosu kaydedildi: {csv_file}")
+        md_report = generate_markdown_report(results, strategy.get_name())
+        report_file = RESULTS_DIR / "metrics_report.md"
+        report_file.write_text(md_report, encoding="utf-8")
+        print(f"Markdown rapor kaydedildi: {report_file}")
 
     print("\n" + "=" * 65)
     print("Metrics modulu testi basariyla tamamlandi! [OK]")

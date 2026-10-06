@@ -201,6 +201,72 @@ class TestMetrics(unittest.TestCase):
         for col in expected_cols:
             self.assertIn(col, df.columns)
 
+    @staticmethod
+    def passing_results():
+        from config import BENCHMARKS, STOCKS
+        return {
+            ticker: DummyResult(
+                ticker=ticker,
+                final_capital=BENCHMARKS[ticker]["final_capital"] + 10_000,
+                trades=[Trade("2025-01-01", 100, "2025-01-02", 110, 100, 1000, 10, "signal")] * 3,
+            )
+            for ticker in STOCKS
+        }
+
+    def test_zero_trades_cannot_pass_even_with_cash_above_benchmark(self):
+        for count in (0, 1, 2):
+            with self.subTest(trades=count):
+                result = compare_with_benchmark(100_000, "TCELL.IS", total_trades=count)
+                self.assertTrue(result["passed"])
+                self.assertFalse(result["meets_trade_rule"])
+                self.assertFalse(result["fully_passed"])
+                self.assertEqual(result["status"], "FAIL")
+        self.assertFalse(compare_with_benchmark(100_000, "TCELL.IS")["fully_passed"])
+
+    def test_unknown_ticker_has_no_implicitly_zero_benchmark(self):
+        result = compare_with_benchmark(1_000_000, "UNKNOWN.IS", total_trades=3)
+        self.assertFalse(result["passed"])
+        self.assertFalse(result["fully_passed"])
+        self.assertEqual(result["status"], "FAIL")
+
+    def test_incomplete_data_prevents_final_challenge_pass(self):
+        results = self.passing_results()
+        results["ASELS.IS"].df = pd.DataFrame()
+        results["ASELS.IS"].df.attrs["data_coverage"] = {"end_date_observed": False}
+        evaluation = evaluate_challenge(results)
+        self.assertTrue(evaluation["performance_all_passed"])
+        self.assertEqual(evaluation["passed_count"], 6)
+        self.assertFalse(evaluation["all_passed"])
+        self.assertEqual(evaluation["incomplete_data"], ["ASELS.IS"])
+        self.assertIn("PROVISIONAL", evaluation["challenge_status"])
+        # Observing the missing final date removes the provisional restriction.
+        results["ASELS.IS"].df.attrs["data_coverage"]["end_date_observed"] = True
+        self.assertTrue(evaluate_challenge(results)["all_passed"])
+
+    def test_wrong_dictionary_key_identity_cannot_count_as_required_stock(self):
+        results = self.passing_results()
+        # A profitable duplicate FROTO result must not masquerade as EREGL.
+        results["EREGL.IS"] = results["FROTO.IS"]
+        evaluation = evaluate_challenge(results)
+        self.assertTrue(evaluation["required_stocks_present"])
+        self.assertEqual(evaluation["passed_count"], 6)
+        self.assertFalse(evaluation["performance_all_passed"])
+        self.assertFalse(evaluation["all_passed"])
+
+    def test_six_entries_must_include_all_required_stock_symbols(self):
+        results = self.passing_results()
+        results["EXTRA.IS"] = results.pop("AKBNK.IS")
+        evaluation = evaluate_challenge(results)
+        self.assertEqual(evaluation["total_count"], 6)
+        self.assertFalse(evaluation["required_stocks_present"])
+        self.assertFalse(evaluation["all_passed"])
+
+    def test_empty_results_do_not_vacuously_pass_challenge(self):
+        evaluation = evaluate_challenge({})
+        self.assertFalse(evaluation["required_stocks_present"])
+        self.assertFalse(evaluation["performance_all_passed"])
+        self.assertFalse(evaluation["all_passed"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
