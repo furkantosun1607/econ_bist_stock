@@ -318,7 +318,7 @@ Hiçbir zaman backtester, metrics, visualizer, data_loader değişmez. **Sadece 
 | Phase | İçerik | Bağımlılık | Durum |
 |-------|--------|------------|-------|
 | **Phase 1** | Config + Data Loader | - | ✅ Tamamlandı |
-| **Phase 2** | İndikatör Kütüphanesi | Phase 1 | ⬜ Bekliyor |
+| **Phase 2** | İndikatör Kütüphanesi | Phase 1 | ✅ Tamamlandı |
 | **Phase 3** | Strateji Base + Örnek | Phase 2 | ⬜ Bekliyor |
 | **Phase 4** | Risk Manager | - | ⬜ Bekliyor |
 | **Phase 5** | Backtest Motoru | Phase 3, 4 | ⬜ Bekliyor |
